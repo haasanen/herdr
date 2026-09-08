@@ -31,6 +31,11 @@ on:
         options:
           - 'false'
           - 'true'
+      build_metadata:
+        description: SemVer build metadata appended to the upstream version
+        required: true
+        default: haasanen.2
+        type: string
 
 permissions:
   contents: read
@@ -39,6 +44,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   RUST_TOOLCHAIN_VERSION: 1.96.1
+  HERDR_BUILD_METADATA: ${{ inputs.build_metadata }}
 
 jobs:
   build-linux:
