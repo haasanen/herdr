@@ -73,6 +73,21 @@ pub(crate) fn saved_ssh_failure_needs_attention(error: &io::Error) -> bool {
     .any(|needle| message.contains(needle))
 }
 
+pub(crate) fn saved_ssh_failure_is_authentication(error: &io::Error) -> bool {
+    if error.kind() == io::ErrorKind::PermissionDenied {
+        return true;
+    }
+    let message = error.to_string().to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "keyboard-interactive",
+        "no supported authentication methods",
+    ]
+    .iter()
+    .any(|needle| message.contains(needle))
+}
+
 fn saved_bridge_path(profile_id: &str) -> PathBuf {
     let pid = std::process::id();
     let readable = format!("herdr-ssh-{pid}-{profile_id}.sock");
@@ -129,6 +144,24 @@ mod tests {
             )));
         }
         assert!(!saved_ssh_failure_needs_attention(&io::Error::new(
+            io::ErrorKind::TimedOut,
+            "network timed out"
+        )));
+    }
+
+    #[test]
+    fn authentication_failures_are_distinct_from_permanent_setup_failures() {
+        for error in [
+            io::Error::new(io::ErrorKind::PermissionDenied, "access denied"),
+            io::Error::other("Permission denied (keyboard-interactive)"),
+            io::Error::other("authentication failed"),
+        ] {
+            assert!(saved_ssh_failure_is_authentication(&error));
+        }
+        assert!(!saved_ssh_failure_is_authentication(&io::Error::other(
+            "Host key verification failed"
+        )));
+        assert!(!saved_ssh_failure_is_authentication(&io::Error::new(
             io::ErrorKind::TimedOut,
             "network timed out"
         )));
