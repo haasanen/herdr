@@ -256,6 +256,68 @@ fn sidebar_renders_local_and_saved_ssh_endpoints_with_status() {
 }
 
 #[test]
+fn workspace_menu_button_tracks_the_active_machine() {
+    let (mut state, remote) = state_with_remote();
+    let frame = state.compose(100, 28).expect("combined endpoint frame");
+    let local_button = state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id.is_local())
+        .expect("local workspace hit")
+        .menu_button;
+    let remote_button = state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id == remote)
+        .expect("remote workspace hit")
+        .menu_button;
+    assert_ne!(local_button, Rect::default());
+    assert_eq!(remote_button, Rect::default());
+    let buffer = frame.to_ratatui_buffer().expect("frame should reconstruct");
+    assert_eq!(buffer[(local_button.x, local_button.y)].symbol(), "⋯");
+
+    assert!(state.activate_endpoint_projection(&remote));
+    let mut remote_surface = surface();
+    remote_surface.boot_id = "remote-boot".into();
+    state.set_pane_surface(remote_surface);
+    let frame = state.compose(100, 28).expect("active remote frame");
+    let remote_button = state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id == remote)
+        .expect("active remote workspace hit")
+        .menu_button;
+    assert_ne!(remote_button, Rect::default());
+    assert!(state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id.is_local())
+        .is_some_and(|hit| hit.menu_button == Rect::default()));
+    let buffer = frame.to_ratatui_buffer().expect("frame should reconstruct");
+    assert_eq!(buffer[(remote_button.x, remote_button.y)].symbol(), "⋯");
+
+    let outcome =
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: remote_button.x,
+            row: remote_button.y,
+            modifiers: KeyModifiers::NONE,
+        })]);
+    assert!(outcome.actions.is_empty());
+    assert!(matches!(
+        state.overlay,
+        Some(ClientShellOverlay::ContextMenu(ClientContextMenuOverlay {
+            target: ClientContextMenuTarget::Workspace { ref workspace_id, .. },
+            ..
+        })) if workspace_id == "ws_1"
+    ));
+}
+
+#[test]
 fn active_workspace_is_the_only_highlight_when_machine_is_expanded() {
     let (mut state, endpoint_id) = state_with_remote();
     assert!(state.activate_endpoint_projection(&endpoint_id));

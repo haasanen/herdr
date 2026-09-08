@@ -284,6 +284,7 @@ pub(super) enum ClientChromeDrag {
 
 pub(super) struct WorkspaceHit {
     pub(super) rect: Rect,
+    pub(super) menu_button: Rect,
     pub(super) endpoint_id: ClientEndpointId,
     pub(super) workspace_id: String,
     pub(super) indented: bool,

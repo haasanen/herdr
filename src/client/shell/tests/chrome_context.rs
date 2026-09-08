@@ -156,6 +156,45 @@ fn client_owned_sidebar_dividers_resize_live() {
 }
 
 #[test]
+fn workspace_menu_button_opens_the_existing_context_menu() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let frame = state.compose(106, 20).expect("composed frame");
+
+    let menu_button = state.hits.workspaces[0].menu_button;
+    assert_ne!(menu_button, Rect::default());
+    let buffer = frame.to_ratatui_buffer().expect("frame should reconstruct");
+    assert_eq!(buffer[(menu_button.x, menu_button.y)].symbol(), "⋯");
+
+    let outcome =
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: menu_button.x,
+            row: menu_button.y,
+            modifiers: KeyModifiers::empty(),
+        })]);
+    assert!(outcome.actions.is_empty());
+    assert!(state.workspace_press.is_none());
+    let menu = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => menu,
+        _ => panic!("workspace menu button should open its context menu"),
+    };
+    assert!(matches!(
+        &menu.target,
+        ClientContextMenuTarget::Workspace { workspace_id, .. } if workspace_id == "ws_1"
+    ));
+    assert!(menu
+        .items()
+        .iter()
+        .any(|item| item.action == ClientContextMenuAction::Rename));
+    assert!(menu
+        .items()
+        .iter()
+        .any(|item| item.action == ClientContextMenuAction::Close));
+}
+
+#[test]
 fn context_menus_capture_stable_targets_and_route_actions() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));

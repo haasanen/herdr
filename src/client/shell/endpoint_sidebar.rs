@@ -102,6 +102,7 @@ pub(super) fn render_collapsed(
             );
             hits.workspaces.push(WorkspaceHit {
                 rect,
+                menu_button: Rect::default(),
                 endpoint_id: endpoint.endpoint_id.clone(),
                 workspace_id: workspace.workspace_id.clone(),
                 indented: false,
@@ -319,8 +320,21 @@ pub(super) fn render_expanded(
                             .add_modifier(Modifier::DIM),
                     );
                 }
+                let menu_button = super::sidebar::workspace_menu_button_rect(
+                    rect,
+                    config.mouse_capture
+                        && endpoint_active
+                        && endpoint.status == ClientEndpointStatus::Online,
+                );
+                super::sidebar::render_workspace_menu_button(
+                    buffer,
+                    menu_button,
+                    workspace.focused,
+                    palette,
+                );
                 hits.workspaces.push(WorkspaceHit {
                     rect,
+                    menu_button,
                     endpoint_id: endpoint.endpoint_id.clone(),
                     workspace_id: workspace.workspace_id.clone(),
                     indented: entry.indented,

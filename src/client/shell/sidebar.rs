@@ -87,6 +87,7 @@ pub(crate) fn render_collapsed_sidebar(
         );
         hits.workspaces.push(WorkspaceHit {
             rect,
+            menu_button: Rect::default(),
             endpoint_id: ClientEndpointId::Local,
             workspace_id: workspace.workspace_id.clone(),
             indented: false,
@@ -332,8 +333,16 @@ pub(crate) fn render_sidebar(
             );
             (rect, key)
         });
+        let menu_button = workspace_menu_button_rect(rect, config.mouse_capture);
+        render_workspace_menu_button(
+            buffer,
+            menu_button,
+            selected || dragged || workspace.focused,
+            palette,
+        );
         hits.workspaces.push(WorkspaceHit {
             rect,
+            menu_button,
             endpoint_id: ClientEndpointId::Local,
             workspace_id: workspace.workspace_id.clone(),
             indented: entry.indented,
@@ -710,4 +719,37 @@ pub(in crate::client::shell) fn render_workspace_rows(
             }
         }
     }
+}
+
+pub(in crate::client::shell) fn workspace_menu_button_rect(area: Rect, enabled: bool) -> Rect {
+    if !enabled || area.width < 2 || area.height == 0 {
+        Rect::default()
+    } else {
+        Rect::new(area.right().saturating_sub(2), area.y, 1, 1)
+    }
+}
+
+pub(in crate::client::shell) fn render_workspace_menu_button(
+    buffer: &mut Buffer,
+    area: Rect,
+    highlighted: bool,
+    palette: &Palette,
+) {
+    if area.is_empty() {
+        return;
+    }
+    put_text(
+        buffer,
+        area.x,
+        area.y,
+        area.width,
+        "⋯",
+        Style::default()
+            .fg(if highlighted {
+                palette.accent
+            } else {
+                palette.overlay0
+            })
+            .add_modifier(Modifier::BOLD),
+    );
 }

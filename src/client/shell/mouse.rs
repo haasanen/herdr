@@ -1972,6 +1972,26 @@ impl ClientShellState {
                     self.persist_chrome_preferences(outcome);
                     return;
                 }
+                let workspace_menu = self
+                    .hits
+                    .workspaces
+                    .iter()
+                    .find(|hit| {
+                        hit.endpoint_id == self.active_endpoint_id
+                            && super::contains(hit.menu_button, point)
+                    })
+                    .map(|hit| {
+                        (
+                            hit.workspace_id.clone(),
+                            hit.menu_button.x,
+                            hit.menu_button.y,
+                        )
+                    });
+                if let Some((workspace_id, x, y)) = workspace_menu {
+                    self.open_workspace_context_menu(workspace_id, x, y);
+                    outcome.repaint = true;
+                    return;
+                }
                 for hit in &self.hits.workspaces {
                     if let Some((rect, key)) = &hit.group_toggle {
                         if super::contains(*rect, point) {
