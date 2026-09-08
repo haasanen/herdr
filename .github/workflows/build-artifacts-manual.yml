@@ -26,11 +26,11 @@ on:
       libghostty_simd:
         description: build libghostty-vt with SIMD-accelerated code paths
         required: true
-        default: 'false'
+        default: 'true'
         type: choice
         options:
-          - 'false'
           - 'true'
+          - 'false'
       build_metadata:
         description: SemVer build metadata appended to the upstream version
         required: true
