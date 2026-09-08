@@ -67,7 +67,7 @@ Removing or disabling the machine you are viewing returns you to Local. If Local
 
 ## Connection problems
 
-- **Reconnecting:** Herdr retries with bounded backoff after a network interruption, sleep, or SSH failure. SSH connections are checked for application-level activity and probed when quiet, so a broken connection does not stay Online indefinitely. Local detects native connection closure or failure instead of using remote health probes.
+- **Reconnecting:** Herdr retries with bounded backoff after a network interruption, sleep, or SSH failure. After a previously healthy SSH connection drops, authentication failures also keep retrying so networking and credential agents can recover after wake. If MFA is required, complete it in an interactive terminal; Herdr reconnects on its next retry without a client restart. SSH connections are checked for application-level activity and probed when quiet, so a broken connection does not stay Online indefinitely. Local detects native connection closure or failure instead of using remote health probes.
 - **Attention:** The target needs an action that cannot be completed in the background, such as host-key approval, authentication, or a compatible server. Other machines remain usable.
 - **Saved-machine file error:** An unreadable or invalid catalog leaves current connections unchanged. Herdr shows a notice and automatically retries reading it.
 

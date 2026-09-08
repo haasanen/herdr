@@ -51,6 +51,7 @@ struct ReconnectState {
     next_attempt: Option<Instant>,
     in_flight: bool,
     generation: Option<u64>,
+    resume_auth_retries: bool,
 }
 
 impl ReconnectState {
@@ -61,6 +62,7 @@ impl ReconnectState {
             next_attempt: Some(now),
             in_flight: false,
             generation: None,
+            resume_auth_retries: false,
         }
     }
 }
@@ -147,6 +149,8 @@ impl EndpointSupervisors {
             self.next_generation = self.next_generation.saturating_add(1);
             let endpoint_id = endpoint_id.clone();
             let target = state.target.clone();
+            let failure_target = target.clone();
+            let retry_resume_auth = state.resume_auth_retries;
             let event_tx = event_tx.clone();
             let shutdown = self.shutdown.clone();
             tokio::spawn(async move {
@@ -160,16 +164,13 @@ impl EndpointSupervisors {
                 .await;
                 let event = match result {
                     Ok(Ok(event)) => event,
-                    Ok(Err(error)) => EndpointSupervisorEvent::Status {
-                        endpoint_id: task_endpoint_id,
+                    Ok(Err(error)) => connection_failure_event(
+                        &failure_target,
+                        task_endpoint_id,
                         generation,
-                        status: if failure_needs_attention(&error) {
-                            ClientEndpointStatus::Attention
-                        } else {
-                            ClientEndpointStatus::Reconnecting
-                        },
-                        message: error.to_string(),
-                    },
+                        error,
+                        retry_resume_auth,
+                    ),
                     Err(error) => EndpointSupervisorEvent::Status {
                         endpoint_id: task_endpoint_id,
                         generation,
@@ -202,9 +203,11 @@ impl EndpointSupervisors {
             ClientEndpointStatus::Online => {
                 state.attempts = 0;
                 state.next_attempt = None;
+                state.resume_auth_retries = false;
             }
             ClientEndpointStatus::Attention | ClientEndpointStatus::Disabled => {
-                state.next_attempt = None
+                state.next_attempt = None;
+                state.resume_auth_retries = false;
             }
             ClientEndpointStatus::Connecting | ClientEndpointStatus::Reconnecting => {
                 state.attempts = state.attempts.saturating_add(1);
@@ -220,12 +223,22 @@ impl EndpointSupervisors {
         generation: u64,
         now: Instant,
     ) -> bool {
-        self.record_status(
+        let accepted = self.record_status(
             endpoint_id,
             generation,
             ClientEndpointStatus::Reconnecting,
             now,
-        )
+        );
+        if accepted {
+            let state = self
+                .endpoints
+                .get_mut(endpoint_id)
+                .expect("accepted endpoint status must still exist");
+            if matches!(&state.target, ConnectTarget::Ssh(_)) {
+                state.resume_auth_retries = true;
+            }
+        }
+        accepted
     }
 }
 
@@ -257,11 +270,11 @@ fn connect_once(
             (stream, Box::new(()))
         }
         ConnectTarget::Ssh(profile) => {
-            let connected = crate::remote::connect_saved_ssh(profile.id.as_str(), &profile.target, &profile.session).map_err(|error| {
-                if failure_needs_attention(&error) {
-                    std::io::Error::new(error.kind(), format!("{error}. Run `{}` interactively to approve setup, then restart this client", crate::remote::saved_ssh_bootstrap_command(&profile.target, &profile.session)))
-                } else { error }
-            })?;
+            let connected = crate::remote::connect_saved_ssh(
+                profile.id.as_str(),
+                &profile.target,
+                &profile.session,
+            )?;
             (connected.stream, Box::new(connected.bridge))
         }
     };
@@ -309,6 +322,36 @@ fn connect_once(
 
 fn failure_needs_attention(error: &std::io::Error) -> bool {
     crate::remote::saved_ssh_failure_needs_attention(error)
+}
+
+fn connection_failure_event(
+    target: &ConnectTarget,
+    endpoint_id: ClientEndpointId,
+    generation: u64,
+    error: std::io::Error,
+    retry_resume_auth: bool,
+) -> EndpointSupervisorEvent {
+    let retrying_auth = retry_resume_auth
+        && matches!(target, ConnectTarget::Ssh(_))
+        && crate::remote::saved_ssh_failure_is_authentication(&error);
+    let status = if failure_needs_attention(&error) && !retrying_auth {
+        ClientEndpointStatus::Attention
+    } else {
+        ClientEndpointStatus::Reconnecting
+    };
+    let message = match (status, target) {
+        (ClientEndpointStatus::Attention, ConnectTarget::Ssh(profile)) => format!(
+            "{error}. Run `{}` interactively to approve setup, then restart this client",
+            crate::remote::saved_ssh_bootstrap_command(&profile.target, &profile.session)
+        ),
+        _ => error.to_string(),
+    };
+    EndpointSupervisorEvent::Status {
+        endpoint_id,
+        generation,
+        status,
+        message,
+    }
 }
 
 fn handshake_error(error: crate::client::ClientError) -> std::io::Error {
@@ -446,6 +489,41 @@ mod tests {
     }
 
     #[test]
+    fn resume_authentication_failures_retry_without_hiding_permanent_failures() {
+        let endpoint_id = ClientEndpointId::Ssh(profile().id);
+        let target = ConnectTarget::Ssh(profile());
+        let auth = std::io::Error::other("Permission denied (keyboard-interactive)");
+        let event = connection_failure_event(&target, endpoint_id.clone(), 4, auth, true);
+        assert!(matches!(
+            event,
+            EndpointSupervisorEvent::Status {
+                status: ClientEndpointStatus::Reconnecting,
+                ..
+            }
+        ));
+
+        let initial_auth = std::io::Error::other("Permission denied (keyboard-interactive)");
+        let event = connection_failure_event(&target, endpoint_id.clone(), 5, initial_auth, false);
+        assert!(matches!(
+            event,
+            EndpointSupervisorEvent::Status {
+                status: ClientEndpointStatus::Attention,
+                ..
+            }
+        ));
+
+        let host_key = std::io::Error::other("Host key verification failed");
+        let event = connection_failure_event(&target, endpoint_id, 6, host_key, true);
+        assert!(matches!(
+            event,
+            EndpointSupervisorEvent::Status {
+                status: ClientEndpointStatus::Attention,
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn healthy_local_only_retries_after_its_connection_fails() {
         let now = Instant::now();
         let mut supervisors = EndpointSupervisors::new(&[profile()], now);
@@ -486,7 +564,9 @@ mod tests {
             supervisors.endpoints[&endpoint_id].next_attempt,
             Some(now + INITIAL_RETRY_DELAY)
         );
+        assert!(supervisors.endpoints[&endpoint_id].resume_auth_retries);
         assert!(supervisors.record_status(&endpoint_id, 4, ClientEndpointStatus::Attention, now));
         assert!(supervisors.endpoints[&endpoint_id].next_attempt.is_none());
+        assert!(!supervisors.endpoints[&endpoint_id].resume_auth_retries);
     }
 }
