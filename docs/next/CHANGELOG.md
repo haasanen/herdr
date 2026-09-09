@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Added
+- Desktop tabs now have a visible `⋯` action button for renaming or closing the tab without using a keyboard shortcut or right-click.
+
 ## [0.9.0] - 2026-09-07
 
 ### Added

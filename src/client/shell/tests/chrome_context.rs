@@ -195,6 +195,48 @@ fn workspace_menu_button_opens_the_existing_context_menu() {
 }
 
 #[test]
+fn tab_menu_button_opens_the_existing_context_menu() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    let frame = state.compose(106, 20).expect("composed frame");
+
+    let (menu_button, tab_id) = state.hits.tab_menu_buttons[0].clone();
+    assert_eq!(tab_id, "tab_1");
+    let buffer = frame.to_ratatui_buffer().expect("frame should reconstruct");
+    assert_eq!(buffer[(menu_button.x, menu_button.y)].symbol(), "⋯");
+
+    let outcome =
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: menu_button.x,
+            row: menu_button.y,
+            modifiers: KeyModifiers::empty(),
+        })]);
+    assert!(outcome.actions.is_empty());
+    assert!(state.tab_press.is_none());
+    let menu = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => menu,
+        _ => panic!("tab menu button should open its context menu"),
+    };
+    assert!(matches!(
+        &menu.target,
+        ClientContextMenuTarget::Tab {
+            tab_id,
+            workspace_id,
+        } if tab_id == "tab_1" && workspace_id == "ws_1"
+    ));
+    assert!(menu
+        .items()
+        .iter()
+        .any(|item| item.action == ClientContextMenuAction::Rename));
+    assert!(menu
+        .items()
+        .iter()
+        .any(|item| item.action == ClientContextMenuAction::Close));
+}
+
+#[test]
 fn context_menus_capture_stable_targets_and_route_actions() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));

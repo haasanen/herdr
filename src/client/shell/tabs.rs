@@ -117,7 +117,9 @@ pub(crate) fn render_tab_bar(
                 .bg(palette.surface0)
                 .add_modifier(Modifier::DIM)
         };
-        let padding = width.saturating_sub(display_width(&name));
+        let menu_button = tab_menu_button_rect(rect, mouse_chrome);
+        let label_width = width.saturating_sub(if menu_button.is_empty() { 0 } else { 2 });
+        let padding = label_width.saturating_sub(display_width(&name));
         let left = padding / 2;
         let text = format!(
             "{empty:left$}{name}{empty:right_padding$}",
@@ -125,7 +127,19 @@ pub(crate) fn render_tab_bar(
             left = left as usize,
             right_padding = padding.saturating_sub(left) as usize,
         );
-        put_text(buffer, rect.x, rect.y, rect.width, &text, style);
+        put_text(buffer, rect.x, rect.y, label_width, &text, style);
+        if !menu_button.is_empty() {
+            put_text(
+                buffer,
+                menu_button.x,
+                menu_button.y,
+                menu_button.width,
+                "⋯",
+                style.add_modifier(Modifier::BOLD),
+            );
+            hits.tab_menu_buttons
+                .push((menu_button, tab.tab_id.clone()));
+        }
         hits.tabs.push((rect, tab.tab_id.clone()));
         first_visible.get_or_insert(index);
         last_visible = Some(index);
@@ -224,6 +238,14 @@ pub(crate) fn render_tab_bar(
         }
     }
     render_tab_bar_status(buffer, area, snapshot, palette);
+}
+
+fn tab_menu_button_rect(area: Rect, enabled: bool) -> Rect {
+    if !enabled || area.width < 3 || area.height == 0 {
+        Rect::default()
+    } else {
+        Rect::new(area.right().saturating_sub(2), area.y, 1, 1)
+    }
 }
 
 pub(crate) fn tab_bar_status_width(snapshot: &ClientShellSnapshot) -> u16 {

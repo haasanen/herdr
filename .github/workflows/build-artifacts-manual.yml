@@ -24,7 +24,7 @@ on:
       build_metadata:
         description: SemVer build metadata appended to the upstream version
         required: true
-        default: haasanen.3
+        default: haasanen.4
         type: string
 
 permissions:

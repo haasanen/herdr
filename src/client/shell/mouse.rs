@@ -2019,6 +2019,22 @@ impl ClientShellState {
                     self.workspace_press = Some(workspace_press);
                     return;
                 }
+                let tab_menu = self
+                    .config
+                    .mouse_capture
+                    .then(|| {
+                        self.hits
+                            .tab_menu_buttons
+                            .iter()
+                            .find(|(rect, _)| super::contains(*rect, point))
+                            .map(|(rect, tab_id)| (*rect, tab_id.clone()))
+                    })
+                    .flatten();
+                if let Some((rect, tab_id)) = tab_menu {
+                    self.open_tab_context_menu(tab_id, rect.x, rect.y);
+                    outcome.repaint = true;
+                    return;
+                }
                 let tab_press = self
                     .config
                     .mouse_capture

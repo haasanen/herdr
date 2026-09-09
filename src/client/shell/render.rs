@@ -311,6 +311,7 @@ pub(super) fn render_shell(
         hits.tab_scroll_left = Rect::default();
         hits.tab_scroll_right = Rect::default();
         hits.new_tab = Rect::default();
+        hits.tab_menu_buttons.clear();
         hits.pane_splits.clear();
     }
     hits
