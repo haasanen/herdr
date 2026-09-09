@@ -6,7 +6,7 @@ on:
       build_group:
         description: which artifacts to build
         required: true
-        default: linux
+        default: all
         type: choice
         options:
           - linux
@@ -16,7 +16,7 @@ on:
       libghostty_optimize:
         description: libghostty-vt optimize mode for this build
         required: true
-        default: ReleaseSafe
+        default: ReleaseFast
         type: choice
         options:
           - ReleaseSafe
@@ -45,6 +45,10 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   RUST_TOOLCHAIN_VERSION: 1.96.1
   HERDR_BUILD_METADATA: ${{ inputs.build_metadata }}
+
+concurrency:
+  group: fork-release-${{ inputs.build_metadata }}
+  cancel-in-progress: false
 
 jobs:
   build-linux:
@@ -262,3 +266,80 @@ jobs:
             herdr-windows-x86_64.zip
             BUILD_INFO.txt
           retention-days: 7
+
+  release:
+    needs: [build-linux, build-macos, build-windows]
+    if: >-
+      ${{
+        always() &&
+        (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') &&
+        (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
+        (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped')
+      }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          persist-credentials: false
+
+      - name: Determine release version
+        id: version
+        shell: bash
+        run: |
+          if [[ ! "$HERDR_BUILD_METADATA" =~ ^[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*$ ]]; then
+            echo "error: invalid SemVer build metadata: $HERDR_BUILD_METADATA" >&2
+            exit 1
+          fi
+          base_version=$(sed -n 's/^version = "\([^"]*\)"/\1/p' Cargo.toml | head -1)
+          test -n "$base_version"
+          release_version="$base_version+$HERDR_BUILD_METADATA"
+          echo "version=$release_version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$release_version" >> "$GITHUB_OUTPUT"
+
+      - name: Download successful build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          path: artifacts
+
+      - name: Protect immutable release tags
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        shell: bash
+        run: |
+          if git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"; then
+            tagged_commit=$(git rev-list -n 1 "$RELEASE_TAG")
+            if [ "$tagged_commit" != "$GITHUB_SHA" ]; then
+              echo "error: $RELEASE_TAG already points to $tagged_commit, not $GITHUB_SHA" >&2
+              echo "Increment build_metadata instead of replacing a published version." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Prepare release assets
+        shell: bash
+        run: |
+          mkdir release-assets
+          find artifacts -type f -name 'herdr-*' -exec cp '{}' release-assets/ \;
+          test -n "$(find release-assets -type f -name 'herdr-*' -print -quit)"
+          cd release-assets
+          sha256sum herdr-* > SHA256SUMS
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Herdr ${{ steps.version.outputs.version }}
+          body: |
+            Haasanen fork build of Herdr ${{ steps.version.outputs.version }}.
+
+            Built from commit `${{ github.sha }}` by GitHub Actions.
+            libghostty-vt: `${{ inputs.libghostty_optimize }}`, SIMD `${{ inputs.libghostty_simd }}`.
+          files: |
+            release-assets/herdr-*
+            release-assets/SHA256SUMS
+          fail_on_unmatched_files: true
