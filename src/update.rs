@@ -22,7 +22,7 @@ use std::time::{Duration, Instant};
 use interprocess::local_socket::traits::Stream as _;
 use serde::{Deserialize, Deserializer};
 
-const STABLE_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/latest.json";
+const DEFAULT_STABLE_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/latest.json";
 const PREVIEW_UPDATE_MANIFEST_URL: &str = "https://herdr.dev/preview.json";
 const HOMEBREW_FORMULA_API_URL: &str = "https://formulae.brew.sh/api/formula/herdr.json";
 const HERDR_UPDATE_COMMAND: &str = "herdr update";
@@ -91,6 +91,100 @@ impl Version {
 impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}.{}.{}", self.major, self.minor, self.patch)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct StableReleaseIdentity {
+    version: Version,
+    build_metadata: Option<String>,
+}
+
+impl StableReleaseIdentity {
+    fn parse(value: &str) -> Option<Self> {
+        let value = value.strip_prefix('v').unwrap_or(value);
+        let (version, build_metadata) = match value.split_once('+') {
+            Some((version, metadata)) if valid_build_metadata(metadata) => {
+                (version, Some(metadata.to_string()))
+            }
+            Some(_) => return None,
+            None => (value, None),
+        };
+        Some(Self {
+            version: Version::parse(version)?,
+            build_metadata,
+        })
+    }
+
+    fn current() -> Self {
+        Self {
+            version: Version::current(),
+            build_metadata: crate::build_info::metadata().map(str::to_string),
+        }
+    }
+
+    fn is_newer_than(&self, current: &Self) -> bool {
+        match self.version.cmp(&current.version) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => build_metadata_is_newer(
+                self.build_metadata.as_deref(),
+                current.build_metadata.as_deref(),
+            ),
+        }
+    }
+}
+
+impl std::fmt::Display for StableReleaseIdentity {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.version)?;
+        if let Some(metadata) = &self.build_metadata {
+            write!(f, "+{metadata}")?;
+        }
+        Ok(())
+    }
+}
+
+fn valid_build_metadata(metadata: &str) -> bool {
+    !metadata.is_empty()
+        && metadata.split('.').all(|identifier| {
+            !identifier.is_empty()
+                && identifier
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        })
+}
+
+fn build_metadata_is_newer(latest: Option<&str>, current: Option<&str>) -> bool {
+    match (latest, current) {
+        (Some(latest), Some(current)) if latest == current => false,
+        (Some(latest), Some(current)) => {
+            let Some((latest_namespace, latest_revision)) = latest.rsplit_once('.') else {
+                return false;
+            };
+            let Some((current_namespace, current_revision)) = current.rsplit_once('.') else {
+                return false;
+            };
+            if latest_namespace != current_namespace {
+                return false;
+            }
+            match (
+                latest_revision.parse::<u64>(),
+                current_revision.parse::<u64>(),
+            ) {
+                (Ok(latest), Ok(current)) => latest > current,
+                _ => false,
+            }
+        }
+        (Some(_), None) => true,
+        (None, _) => false,
+    }
+}
+
+pub(crate) fn stable_update_manifest_url() -> &'static str {
+    match option_env!("HERDR_STABLE_UPDATE_MANIFEST_URL") {
+        Some(url) if !url.is_empty() => url,
+        _ => DEFAULT_STABLE_UPDATE_MANIFEST_URL,
     }
 }
 
@@ -274,15 +368,17 @@ impl UpdateManifest {
     }
 
     fn metadata_for_version(&self, version: &Version) -> Option<ManifestReleaseMetadata> {
-        let version = version.to_string();
-        if self.version.trim_start_matches('v') == version {
+        let version_string = version.to_string();
+        if StableReleaseIdentity::parse(&self.version)
+            .is_some_and(|identity| identity.version == *version)
+        {
             return Some(ManifestReleaseMetadata {
                 notes: self.notes.clone(),
                 announcement: self.announcement.clone(),
             });
         }
 
-        self.releases.get(&version).and_then(|release| {
+        self.releases.get(&version_string).and_then(|release| {
             let metadata =
                 serde_json::from_value::<ManifestReleaseMetadata>(release.clone()).ok()?;
             (!metadata.notes_body().is_empty()).then_some(metadata)
@@ -326,7 +422,7 @@ impl ReleaseInfo {
 }
 
 fn fetch_update_manifest() -> Result<UpdateManifest, String> {
-    fetch_json_manifest(STABLE_UPDATE_MANIFEST_URL)
+    fetch_json_manifest(stable_update_manifest_url())
 }
 
 fn fetch_preview_manifest() -> Result<PreviewManifest, String> {
@@ -382,8 +478,8 @@ fn handle_manifest_announcement(version: &str, value: Option<&serde_json::Value>
 }
 
 fn release_info_from_manifest(manifest: &UpdateManifest) -> Result<Option<ReleaseInfo>, String> {
-    let current = Version::current();
-    let latest = Version::parse(&manifest.version)
+    let current = StableReleaseIdentity::current();
+    let latest = StableReleaseIdentity::parse(&manifest.version)
         .ok_or_else(|| format!("invalid version in update manifest: {}", manifest.version))?;
 
     if !stable_channel_should_install(&latest, &current, crate::build_info::is_preview()) {
@@ -391,7 +487,7 @@ fn release_info_from_manifest(manifest: &UpdateManifest) -> Result<Option<Releas
     }
 
     let metadata = manifest
-        .metadata_for_version(&latest)
+        .metadata_for_version(&latest.version)
         .ok_or_else(|| format!("missing release metadata for v{latest}"))?;
     let notes_body = metadata.notes_body();
     if notes_body.is_empty() {
@@ -415,7 +511,7 @@ fn release_info_from_manifest(manifest: &UpdateManifest) -> Result<Option<Releas
 
     Ok(Some(ReleaseInfo {
         identity: latest.to_string(),
-        version: latest,
+        version: latest.version,
         channel: UpdateChannel::Stable,
         build_id: None,
         commit: None,
@@ -432,11 +528,11 @@ fn release_info_from_manifest(manifest: &UpdateManifest) -> Result<Option<Releas
 }
 
 fn stable_channel_should_install(
-    latest: &Version,
-    current: &Version,
+    latest: &StableReleaseIdentity,
+    current: &StableReleaseIdentity,
     installed_is_preview: bool,
 ) -> bool {
-    installed_is_preview || latest > current
+    installed_is_preview || latest.is_newer_than(current)
 }
 
 fn preview_display_version(base_version: &str, build_id: &str) -> String {
@@ -544,10 +640,7 @@ fn check_latest() -> Result<Option<ReleaseInfo>, String> {
     let release = release_info_from_manifest(&manifest)?;
     if let Some(release) = &release {
         if let Some(metadata) = manifest.metadata_for_version(&release.version) {
-            handle_manifest_announcement(
-                &release.version.to_string(),
-                metadata.announcement.as_ref(),
-            );
+            handle_manifest_announcement(release.label(), metadata.announcement.as_ref());
         }
     }
     Ok(release)
@@ -3401,6 +3494,40 @@ mod tests {
     }
 
     #[test]
+    fn stable_release_identity_parses_fork_metadata() {
+        let identity = StableReleaseIdentity::parse("v0.9.0+haasanen.12").unwrap();
+
+        assert_eq!(identity.version, Version::parse("0.9.0").unwrap());
+        assert_eq!(identity.build_metadata.as_deref(), Some("haasanen.12"));
+        assert_eq!(identity.to_string(), "0.9.0+haasanen.12");
+    }
+
+    #[test]
+    fn stable_release_identity_rejects_invalid_metadata() {
+        assert!(StableReleaseIdentity::parse("0.9.0+").is_none());
+        assert!(StableReleaseIdentity::parse("0.9.0+haasanen..2").is_none());
+        assert!(StableReleaseIdentity::parse("0.9.0+haasanen/2").is_none());
+    }
+
+    #[test]
+    fn fork_release_revisions_compare_numerically() {
+        let old = StableReleaseIdentity::parse("0.9.0+haasanen.2").unwrap();
+        let new = StableReleaseIdentity::parse("0.9.0+haasanen.10").unwrap();
+
+        assert!(new.is_newer_than(&old));
+        assert!(!old.is_newer_than(&new));
+        assert!(!new.is_newer_than(&new));
+    }
+
+    #[test]
+    fn newer_upstream_base_version_wins_over_fork_revision() {
+        let old = StableReleaseIdentity::parse("0.9.0+haasanen.99").unwrap();
+        let new = StableReleaseIdentity::parse("0.10.0+haasanen.1").unwrap();
+
+        assert!(new.is_newer_than(&old));
+    }
+
+    #[test]
     fn current_version_parses() {
         let v = Version::current();
         assert!(v.major < 100);
@@ -3621,8 +3748,8 @@ mod tests {
 
     #[test]
     fn stable_channel_installs_stable_asset_when_current_binary_is_preview() {
-        let latest_stable = Version::parse("0.6.6").unwrap();
-        let installed_base = Version::parse("0.6.6").unwrap();
+        let latest_stable = StableReleaseIdentity::parse("0.6.6").unwrap();
+        let installed_base = StableReleaseIdentity::parse("0.6.6").unwrap();
         assert!(stable_channel_should_install(
             &latest_stable,
             &installed_base,
@@ -3633,6 +3760,40 @@ mod tests {
             &installed_base,
             false
         ));
+    }
+
+    #[test]
+    fn stable_channel_installs_newer_fork_revision() {
+        let latest = StableReleaseIdentity::parse("0.9.0+haasanen.3").unwrap();
+        let installed = StableReleaseIdentity::parse("0.9.0+haasanen.2").unwrap();
+
+        assert!(stable_channel_should_install(&latest, &installed, false));
+        assert!(!stable_channel_should_install(&installed, &latest, false));
+    }
+
+    #[test]
+    fn release_info_keeps_fork_identity() {
+        let (os, arch) = platform_target();
+        let asset_key = format!("{os}-{arch}");
+        let json = format!(
+            r####"{{
+                "version": "99.99.99+haasanen.3",
+                "notes": "### Changed\n- Fork updates",
+                "assets": {{
+                    "{asset_key}": {{
+                        "url": "https://example.com/herdr",
+                        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                    }}
+                }}
+            }}"####
+        );
+        let manifest: UpdateManifest = serde_json::from_str(&json).unwrap();
+        let release = release_info_from_manifest(&manifest)
+            .unwrap()
+            .expect("release info");
+
+        assert_eq!(release.label(), "99.99.99+haasanen.3");
+        assert_eq!(release.version, Version::parse("99.99.99").unwrap());
     }
 
     #[test]

@@ -1,18 +1,8 @@
-name: Build artifacts (manual)
+name: Build and release fork
 
 on:
   workflow_dispatch:
     inputs:
-      build_group:
-        description: which artifacts to build
-        required: true
-        default: all
-        type: choice
-        options:
-          - linux
-          - macos
-          - windows
-          - all
       libghostty_optimize:
         description: libghostty-vt optimize mode for this build
         required: true
@@ -34,7 +24,7 @@ on:
       build_metadata:
         description: SemVer build metadata appended to the upstream version
         required: true
-        default: haasanen.2
+        default: haasanen.3
         type: string
 
 permissions:
@@ -45,6 +35,7 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   RUST_TOOLCHAIN_VERSION: 1.96.1
   HERDR_BUILD_METADATA: ${{ inputs.build_metadata }}
+  HERDR_STABLE_UPDATE_MANIFEST_URL: https://github.com/${{ github.repository }}/releases/latest/download/latest.json
 
 concurrency:
   group: fork-release-${{ inputs.build_metadata }}
@@ -52,7 +43,6 @@ concurrency:
 
 jobs:
   build-linux:
-    if: ${{ inputs.build_group == 'linux' || inputs.build_group == 'all' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -136,7 +126,6 @@ jobs:
           retention-days: 7
 
   build-macos:
-    if: ${{ inputs.build_group == 'macos' || inputs.build_group == 'all' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -208,7 +197,6 @@ jobs:
           retention-days: 7
 
   build-windows:
-    if: ${{ inputs.build_group == 'windows' || inputs.build_group == 'all' }}
     runs-on: windows-latest
     env:
       LIBGHOSTTY_VT_OPTIMIZE: ${{ inputs.libghostty_optimize }}
@@ -269,13 +257,6 @@ jobs:
 
   release:
     needs: [build-linux, build-macos, build-windows]
-    if: >-
-      ${{
-        always() &&
-        (needs.build-linux.result == 'success' || needs.build-linux.result == 'skipped') &&
-        (needs.build-macos.result == 'success' || needs.build-macos.result == 'skipped') &&
-        (needs.build-windows.result == 'success' || needs.build-windows.result == 'skipped')
-      }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -320,6 +301,9 @@ jobs:
           fi
 
       - name: Prepare release assets
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         shell: bash
         run: |
           mkdir release-assets
@@ -327,6 +311,38 @@ jobs:
           test -n "$(find release-assets -type f -name 'herdr-*' -print -quit)"
           cd release-assets
           sha256sum herdr-* > SHA256SUMS
+          protocol=$(sed -n 's/pub const PROTOCOL_VERSION: u32 = \([0-9]*\);/\1/p' ../src/protocol/wire.rs)
+          endpoint_generation=$(sed -n 's/pub const ENDPOINT_PROTOCOL_GENERATION: u32 = \([0-9]*\);/\1/p' ../src/protocol/endpoint.rs)
+          test -n "$protocol"
+          test -n "$endpoint_generation"
+          assets='{}'
+          for asset in herdr-*; do
+            case "$asset" in
+              herdr-windows-x86_64.zip) asset_key=windows-x86_64 ;;
+              *) asset_key=${asset#herdr-} ;;
+            esac
+            checksum=$(awk -v name="$asset" '$2 == name { print $1 }' SHA256SUMS)
+            test -n "$checksum"
+            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$asset"
+            assets=$(jq -c \
+              --arg key "$asset_key" \
+              --arg url "$url" \
+              --arg sha256 "$checksum" \
+              '. + {($key): {url: $url, sha256: $sha256}}' <<< "$assets")
+          done
+          jq -n \
+            --arg version "$RELEASE_VERSION" \
+            --arg notes "Fork release $RELEASE_VERSION with automatic updates from haasanen/herdr." \
+            --argjson protocol "$protocol" \
+            --argjson endpoint_generation "$endpoint_generation" \
+            --argjson assets "$assets" \
+            '{
+              version: $version,
+              protocol: $protocol,
+              endpoint_generation: $endpoint_generation,
+              notes: $notes,
+              assets: $assets
+            }' > latest.json
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
@@ -342,4 +358,5 @@ jobs:
           files: |
             release-assets/herdr-*
             release-assets/SHA256SUMS
+            release-assets/latest.json
           fail_on_unmatched_files: true
