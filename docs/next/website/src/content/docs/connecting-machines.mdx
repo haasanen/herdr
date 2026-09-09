@@ -45,6 +45,8 @@ Choose a machine or one of its workspaces in the sidebar. The selected machine r
 
 Local opens immediately on startup without waiting for SSH connections. A stalled machine cannot hold up another machine's input. Multiple Herdr clients can also view different tabs on the same server independently; see [Client and server](/docs/concepts/#client-and-server) for shared-tab sizing.
 
+To paste an image from the client's clipboard into a local or remote agent prompt, press `Ctrl+V` or choose **Paste image** from the pane's right-click menu. Herdr stages the image on the machine that owns the pane and pastes its path, allowing tools such as Codex and Claude Code to show it as an image attachment. Normal text paste remains handled by your terminal.
+
 When a connection is lost, the last workspace and agent state remains visible but dimmed. That is cached information, not live state. Input and navigation into those cached panes stay disabled until a fresh connection and matching screen arrive. Reconnecting never takes selection away from the machine you are using.
 
 ## Rename, disable, or remove

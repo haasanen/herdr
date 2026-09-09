@@ -320,6 +320,46 @@ fn context_menus_capture_stable_targets_and_route_actions() {
 }
 
 #[test]
+fn pane_context_menu_can_paste_a_local_clipboard_image() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+    state.compose(106, 20).expect("composed frame");
+
+    let pane = state.hits.panes[0].rect;
+    state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+        kind: MouseEventKind::Down(MouseButton::Right),
+        column: pane.x + 1,
+        row: pane.y,
+        modifiers: KeyModifiers::empty(),
+    })]);
+    state.compose(106, 20).expect("pane context menu");
+    let paste_index = match state.overlay.as_ref() {
+        Some(ClientShellOverlay::ContextMenu(menu)) => menu
+            .items()
+            .iter()
+            .position(|item| item.action == ClientContextMenuAction::PasteImage)
+            .expect("paste image item"),
+        _ => panic!("pane context menu"),
+    };
+    let paste = state.hits.context_menu_rows[paste_index].0;
+    let outcome =
+        state.handle_raw_events(vec![RawInputEvent::Mouse(crossterm::event::MouseEvent {
+            kind: MouseEventKind::Down(MouseButton::Left),
+            column: paste.x + 1,
+            row: paste.y,
+            modifiers: KeyModifiers::empty(),
+        })]);
+
+    assert!(matches!(
+        &outcome.actions[..],
+        [ClientShellAction::PasteClipboardImage(
+            crate::protocol::ClientClipboardImageTarget::Pane(pane_id)
+        )] if pane_id == "pane_1"
+    ));
+}
+
+#[test]
 fn global_menu_opens_from_sidebar_and_routes_client_actions() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.set_snapshot(Box::new(snapshot()));

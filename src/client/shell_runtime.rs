@@ -28,6 +28,20 @@ pub(super) fn dispatch_client_shell_actions(
             shell::ClientShellAction::ClipboardWrite(bytes) => {
                 crate::selection::write_osc52_bytes(&bytes);
             }
+            shell::ClientShellAction::PasteClipboardImage(target) => {
+                if endpoints.active_surface_available() {
+                    if let Some(image) = crate::platform::read_clipboard_image() {
+                        write_remote_image_to_server(
+                            endpoints,
+                            target,
+                            image,
+                            "pane context menu",
+                        )?;
+                    } else {
+                        info!("clipboard image paste requested, but local clipboard has no image");
+                    }
+                }
+            }
             shell::ClientShellAction::ActivateEndpoint {
                 endpoint_id,
                 target,

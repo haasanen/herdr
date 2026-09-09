@@ -52,7 +52,10 @@ impl ClientContextMenuOverlay {
                 right_click_passthrough,
                 ..
             } => {
-                let mut items = vec![item("Rename pane", Action::RenamePane)];
+                let mut items = vec![
+                    item("Paste image", Action::PasteImage),
+                    item("Rename pane", Action::RenamePane),
+                ];
                 if *has_manual_label {
                     items.push(item("Clear pane name", Action::ClearPaneName));
                 }
@@ -382,6 +385,11 @@ impl ClientShellState {
         };
 
         match action {
+            ClientContextMenuAction::PasteImage => {
+                outcome.actions.push(ClientShellAction::PasteClipboardImage(
+                    crate::protocol::ClientClipboardImageTarget::Pane(pane_id),
+                ));
+            }
             ClientContextMenuAction::RenamePane => {
                 let label = self.snapshot.as_deref().and_then(|snapshot| {
                     snapshot

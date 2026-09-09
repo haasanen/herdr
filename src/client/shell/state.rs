@@ -300,6 +300,7 @@ pub(crate) enum ClientShellAction {
         request: Box<crate::api::schema::Request>,
     },
     ClipboardWrite(Vec<u8>),
+    PasteClipboardImage(crate::protocol::ClientClipboardImageTarget),
     OpenSafeWebUrl(String),
     ActivateEndpoint {
         endpoint_id: ClientEndpointId,
@@ -568,6 +569,7 @@ pub(super) struct ClientWorktreeRemoveOverlay {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum ClientContextMenuAction {
+    PasteImage,
     Rename,
     Close,
     NewWorktree,
