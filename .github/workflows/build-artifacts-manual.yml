@@ -24,7 +24,7 @@ on:
       build_metadata:
         description: SemVer build metadata appended to the upstream version
         required: true
-        default: haasanen.4
+        default: haasanen.5
         type: string
 
 permissions:
@@ -315,6 +315,7 @@ jobs:
           endpoint_generation=$(sed -n 's/pub const ENDPOINT_PROTOCOL_GENERATION: u32 = \([0-9]*\);/\1/p' ../src/protocol/endpoint.rs)
           test -n "$protocol"
           test -n "$endpoint_generation"
+          encoded_release_tag=$(jq -nr --arg value "$RELEASE_TAG" '$value | @uri')
           assets='{}'
           for asset in herdr-*; do
             case "$asset" in
@@ -323,7 +324,7 @@ jobs:
             esac
             checksum=$(awk -v name="$asset" '$2 == name { print $1 }' SHA256SUMS)
             test -n "$checksum"
-            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$RELEASE_TAG/$asset"
+            url="https://github.com/$GITHUB_REPOSITORY/releases/download/$encoded_release_tag/$asset"
             assets=$(jq -c \
               --arg key "$asset_key" \
               --arg url "$url" \
