@@ -115,6 +115,7 @@ fn client_mouse_selection_highlights_and_copies_through_endpoint_extraction() {
             if params.pane_id == "pane_1"
                 && params.anchor == crate::api::schema::PaneTextPoint { row: 0, col: 0 }
                 && params.cursor == crate::api::schema::PaneTextPoint { row: 0, col: 2 }
+                && params.content_revision.is_none()
     ));
 
     let (repaint, actions) = state.handle_endpoint_result(

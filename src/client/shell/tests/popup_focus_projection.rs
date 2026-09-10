@@ -458,7 +458,7 @@ fn focus_loss_releases_active_pane_mouse_before_reporting_focus() {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: pane.inner_rect.x + 2,
         row: pane.inner_rect.y + 1,
-        modifiers: KeyModifiers::ALT,
+        modifiers: KeyModifiers::empty(),
     })]);
     assert!(matches!(
         &down.requests[..],
@@ -514,7 +514,7 @@ fn pane_mouse_release_survives_popup_open_transition() {
         kind: MouseEventKind::Down(MouseButton::Left),
         column: pane.inner_rect.x,
         row: pane.inner_rect.y,
-        modifiers: KeyModifiers::ALT,
+        modifiers: KeyModifiers::empty(),
     })]);
     assert!(matches!(
         &down.requests[..],
@@ -527,7 +527,7 @@ fn pane_mouse_release_survives_popup_open_transition() {
         kind: MouseEventKind::Up(MouseButton::Left),
         column: 0,
         row: 0,
-        modifiers: KeyModifiers::ALT,
+        modifiers: KeyModifiers::empty(),
     })]);
     assert!(matches!(
         &up.requests[..],

@@ -345,9 +345,6 @@ impl ClientShellState {
             );
         }
         if let Some(gesture) = self.pane_mouse_gesture.take() {
-            if gesture.select_on_drag {
-                return;
-            }
             let modifiers = gesture
                 .last_event
                 .modifiers

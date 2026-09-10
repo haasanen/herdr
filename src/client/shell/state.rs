@@ -222,9 +222,6 @@ pub(super) struct PaneSplitHit {
 pub(super) struct ClientPaneMouseGesture {
     pub(super) hit: PaneHit,
     pub(super) button: crossterm::event::MouseButton,
-    /// Delay an unmodified pane click until release so a drag can become a
-    /// client-owned, pane-bounded text selection instead of reaching the app.
-    pub(super) select_on_drag: bool,
     pub(super) stripped_modifiers: crossterm::event::KeyModifiers,
     pub(super) last_event: crossterm::event::MouseEvent,
     pub(super) last_position: crate::protocol::ClientMousePosition,
@@ -1624,9 +1621,7 @@ impl ClientShellState {
             self.workspace_press = None;
             self.tab_press = None;
             if self.pane_mouse_gesture.as_ref().is_some_and(|gesture| {
-                gesture.select_on_drag
-                    || gesture.hit.popup
-                        && previous_popup.as_deref() == Some(gesture.hit.pane_id.as_str())
+                gesture.hit.popup && previous_popup.as_deref() == Some(gesture.hit.pane_id.as_str())
             }) {
                 self.pane_mouse_gesture = None;
             }

@@ -779,59 +779,6 @@ impl ClientShellState {
                 return;
             }
         }
-        let select_from_reported_drag = self.pane_mouse_gesture.as_ref().is_some_and(|gesture| {
-            gesture.select_on_drag
-                && matches!(
-                    mouse.kind,
-                    MouseEventKind::Drag(MouseButton::Left) | MouseEventKind::Up(MouseButton::Left)
-                )
-        });
-        if select_from_reported_drag {
-            let gesture = self
-                .pane_mouse_gesture
-                .take()
-                .expect("checked pending pane mouse gesture");
-            let hit = self
-                .hits
-                .panes
-                .iter()
-                .find(|hit| hit.pane_id == gesture.hit.pane_id)
-                .cloned()
-                .unwrap_or_else(|| gesture.hit.clone());
-            match mouse.kind {
-                MouseEventKind::Drag(MouseButton::Left) => {
-                    self.stop_selection_autoscroll();
-                    self.selection_highlight_clear_deadline = None;
-                    self.pending_word_selection = None;
-                    self.last_pane_click = None;
-                    self.selection = Some(crate::selection::Selection::anchor(
-                        gesture.hit.pane_id,
-                        gesture
-                            .last_event
-                            .row
-                            .saturating_sub(gesture.hit.inner_rect.y),
-                        gesture
-                            .last_event
-                            .column
-                            .saturating_sub(gesture.hit.inner_rect.x),
-                        gesture.hit.scroll,
-                    ));
-                    self.update_selection_drag(&hit, mouse.column, mouse.row, outcome);
-                    outcome.repaint = true;
-                }
-                MouseEventKind::Up(MouseButton::Left) => {
-                    self.push_pane_mouse_event(
-                        &gesture.hit,
-                        gesture.last_event,
-                        gesture.last_event.modifiers,
-                        outcome,
-                    );
-                    self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
-                }
-                _ => unreachable!(),
-            }
-            return;
-        }
         if let Some(gesture) = self.pane_mouse_gesture.as_ref() {
             let gesture_event = matches!(
                 mouse.kind,
@@ -886,7 +833,6 @@ impl ClientShellState {
                                 last_position: self.pane_mouse_position(&hit, mouse),
                                 hit,
                                 button,
-                                select_on_drag: false,
                                 stripped_modifiers: crossterm::event::KeyModifiers::empty(),
                                 last_event: mouse,
                             });
@@ -1703,7 +1649,7 @@ impl ClientShellState {
                 .as_mut()
                 .is_some_and(crate::selection::Selection::finish);
             if copied && self.config.copy_on_select {
-                self.request_selection_copy(outcome, false);
+                self.request_selection_copy(outcome, true);
                 self.selection = None;
             } else if !copied {
                 self.selection = None;
@@ -1763,7 +1709,6 @@ impl ClientShellState {
                             last_position: self.pane_mouse_position(&hit, mouse),
                             hit,
                             button: MouseButton::Right,
-                            select_on_drag: false,
                             stripped_modifiers,
                             last_event: mouse,
                         });
@@ -2209,15 +2154,11 @@ impl ClientShellState {
                     .cloned();
                 if let Some(hit) = pane_hit {
                     if hit.mouse_reporting && super::contains(hit.inner_rect, point) {
-                        let select_on_drag = mouse.modifiers.is_empty();
-                        if !select_on_drag {
-                            self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
-                        }
+                        self.push_pane_mouse_event(&hit, mouse, mouse.modifiers, outcome);
                         self.pane_mouse_gesture = Some(ClientPaneMouseGesture {
                             last_position: self.pane_mouse_position(&hit, mouse),
                             hit: hit.clone(),
                             button: MouseButton::Left,
-                            select_on_drag,
                             stripped_modifiers: crossterm::event::KeyModifiers::empty(),
                             last_event: mouse,
                         });
@@ -2272,7 +2213,6 @@ impl ClientShellState {
                         last_position: self.pane_mouse_position(&hit, mouse),
                         hit,
                         button: MouseButton::Middle,
-                        select_on_drag: false,
                         stripped_modifiers: crossterm::event::KeyModifiers::empty(),
                         last_event: mouse,
                     });

@@ -247,7 +247,11 @@ impl ClientShellState {
         }
     }
 
-    pub(super) fn request_selection_copy(&mut self, outcome: &mut ClientShellInput, live: bool) {
+    pub(super) fn request_selection_copy(
+        &mut self,
+        outcome: &mut ClientShellInput,
+        allow_live_content: bool,
+    ) {
         let Some(selection) = self.selection.as_ref() else {
             return;
         };
@@ -257,9 +261,10 @@ impl ClientShellState {
             .as_ref()
             .and_then(|surface| surface.panes.iter().find(|pane| pane.pane_id == pane_id))
             .map(|pane| pane.content_revision)
-            // Read a manual mouse selection atomically from the live terminal. Output
-            // between the displayed frame and this request must not reject the copy.
-            .filter(|_| !live);
+            // Manual selections use absolute terminal-buffer coordinates. Allowing
+            // live content avoids rejecting the copy when output lands after the
+            // selected frame was rendered but before the endpoint reads the text.
+            .filter(|_| !allow_live_content);
         let (anchor, cursor) = selection.ordered_cells();
         self.push_endpoint_method_with_kind(
             crate::api::schema::Method::PaneSelectionRead(
