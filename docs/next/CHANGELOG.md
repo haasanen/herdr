@@ -5,6 +5,7 @@
 ### Added
 - Desktop tabs now have a visible `⋯` action button for renaming or closing the tab without using a keyboard shortcut or right-click.
 - Clipboard images can now be pasted into local as well as remote panes with `Ctrl+V`, and the pane context menu provides a **Paste image** action when the outer terminal does not forward image paste events.
+- Unmodified left-button drags now create pane-bounded Herdr text selections even when the pane application has enabled mouse reporting. Clicks, scrolling, pointer motion, and modified drags continue to reach the pane application.
 
 ## [0.9.0] - 2026-09-07
 
