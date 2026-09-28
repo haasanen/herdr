@@ -24,7 +24,7 @@ on:
       build_metadata:
         description: SemVer build metadata appended to the upstream version
         required: true
-        default: haasanen.7
+        default: haasanen.1
         type: string
 
 permissions:
@@ -70,9 +70,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        uses: vercel-labs/setup-zig@83c1594f26b86da8a9a8ddd9b5ee5f3af0f96943 # v1.0.2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       - name: Prefer official Ubuntu mirrors over Azure
         run: |
@@ -152,19 +152,10 @@ jobs:
           toolchain: ${{ env.RUST_TOOLCHAIN_VERSION }}
           targets: ${{ matrix.target }}
 
-      - name: Restore Homebrew Zig cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      - name: Install Zig
+        uses: vercel-labs/setup-zig@83c1594f26b86da8a9a8ddd9b5ee5f3af0f96943 # v1.0.2
         with:
-          path: ~/Library/Caches/Homebrew/downloads
-          key: homebrew-zig-0.15-${{ runner.os }}-${{ runner.arch }}
-          restore-keys: |
-            homebrew-zig-0.15-${{ runner.os }}-
-
-      - name: Install patched Zig on macOS
-        run: |
-          HOMEBREW_NO_AUTO_UPDATE=1 brew install zig@0.15
-          echo "$(brew --prefix zig@0.15)/bin" >> "$GITHUB_PATH"
-          "$(brew --prefix zig@0.15)/bin/zig" version
+          version: 0.16.0
 
       - name: Install macOS build tools
         run: brew install cmake ninja
@@ -214,9 +205,9 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Install Zig
-        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        uses: vercel-labs/setup-zig@83c1594f26b86da8a9a8ddd9b5ee5f3af0f96943 # v1.0.2
         with:
-          version: 0.15.2
+          version: 0.16.0
 
       - name: Remove Zig caches
         shell: pwsh
@@ -308,7 +299,9 @@ jobs:
         run: |
           mkdir release-assets
           find artifacts -type f -name 'herdr-*' -exec cp '{}' release-assets/ \;
-          test -n "$(find release-assets -type f -name 'herdr-*' -print -quit)"
+          for asset in herdr-linux-x86_64 herdr-linux-aarch64 herdr-macos-x86_64 herdr-macos-aarch64 herdr-windows-x86_64.zip; do
+            test -f "release-assets/$asset" || { echo "Missing $asset" >&2; exit 1; }
+          done
           cd release-assets
           sha256sum herdr-* > SHA256SUMS
           protocol=$(sed -n 's/pub const PROTOCOL_VERSION: u32 = \([0-9]*\);/\1/p' ../src/protocol/wire.rs)
@@ -351,6 +344,7 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           target_commitish: ${{ github.sha }}
           name: Herdr ${{ steps.version.outputs.version }}
+          make_latest: true
           body: |
             Haasanen fork build of Herdr ${{ steps.version.outputs.version }}.
 

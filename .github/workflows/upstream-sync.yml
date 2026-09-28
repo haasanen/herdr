@@ -1,0 +1,162 @@
+name: Sync upstream stable release
+
+on:
+  schedule:
+    - cron: '17 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: fork-upstream-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.repository == 'haasanen/herdr'
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Check out the fork's default branch
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Find the latest upstream stable release
+        id: upstream
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh api repos/herdrdev/herdr/releases/latest --jq .tag_name)
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected stable release tag: $tag" >&2
+            exit 1
+          fi
+          git fetch --no-tags https://github.com/herdrdev/herdr.git "refs/tags/$tag:refs/tags/$tag"
+          if git merge-base --is-ancestor "$tag^{commit}" HEAD; then
+            echo "Upstream $tag is already merged into the fork."
+            echo 'needed=false' >> "$GITHUB_OUTPUT"
+          else
+            echo "New upstream release: $tag"
+            echo 'needed=true' >> "$GITHUB_OUTPUT"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare a merge candidate without changing the default branch
+        if: steps.upstream.outputs.needed == 'true'
+        id: candidate
+        shell: bash
+        env:
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.tag }}
+          UPSTREAM_VERSION: ${{ steps.upstream.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          candidate="automation/upstream-$UPSTREAM_VERSION"
+          release_tag="v$UPSTREAM_VERSION+haasanen.1"
+          if git ls-remote --exit-code --heads origin "refs/heads/$candidate" > /dev/null; then
+            # Reuse a previous candidate after a transient CI or runner failure.
+            git fetch --no-tags origin "refs/heads/$candidate:refs/remotes/origin/$candidate"
+            if ! git merge-base --is-ancestor HEAD "origin/$candidate" ||
+               ! git merge-base --is-ancestor "$UPSTREAM_TAG^{commit}" "origin/$candidate"; then
+              echo "Existing $candidate is not based on this fork and upstream release; merge manually." >&2
+              exit 1
+            fi
+            git switch --detach "origin/$candidate"
+          else
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            if ! git merge --no-ff --no-edit "$UPSTREAM_TAG"; then
+              echo "Upstream $UPSTREAM_TAG conflicts with fork changes. Resolve it manually; master is unchanged." >&2
+              git merge --abort
+              exit 1
+            fi
+            git push origin "HEAD:refs/heads/$candidate"
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/$release_tag" > /dev/null; then
+            git fetch --no-tags origin "refs/tags/$release_tag:refs/tags/$release_tag"
+            if [[ "$(git rev-list -n 1 "$release_tag")" != "$(git rev-parse HEAD)" ]]; then
+              echo "$release_tag already belongs to another commit. Choose a new fork revision manually." >&2
+              exit 1
+            fi
+            for asset in herdr-linux-x86_64 herdr-linux-aarch64 herdr-macos-x86_64 herdr-macos-aarch64 herdr-windows-x86_64.zip SHA256SUMS latest.json; do
+              if ! gh release view "$release_tag" --json assets --jq '.assets[].name' | grep -Fxq "$asset"; then
+                echo "Existing $release_tag is missing $asset; inspect the release before promotion." >&2
+                exit 1
+              fi
+            done
+            echo 'released=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'released=false' >> "$GITHUB_OUTPUT"
+          fi
+          echo "branch=$candidate" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+
+      - name: Run the full CI suite against the candidate
+        if: steps.upstream.outputs.needed == 'true' && steps.candidate.outputs.released != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_BRANCH: ${{ steps.candidate.outputs.branch }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          set -euo pipefail
+          dispatched_after=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          gh workflow run ci.yml --ref "$CANDIDATE_BRANCH"
+          for attempt in {1..30}; do
+            run_id=$(gh run list --workflow ci.yml --branch "$CANDIDATE_BRANCH" --event workflow_dispatch --limit 20 --json databaseId,headSha,createdAt |
+              jq -r --arg sha "$CANDIDATE_COMMIT" --arg since "$dispatched_after" '[.[] | select(.headSha == $sha and .createdAt >= $since) | .databaseId] | first // empty')
+            if [[ -n "$run_id" ]]; then break; fi
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then echo 'CI run did not appear' >&2; exit 1; fi
+          gh run watch "$run_id" --interval 30 --exit-status
+
+      - name: Build and publish all five platform packages
+        if: steps.upstream.outputs.needed == 'true' && steps.candidate.outputs.released != 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE_BRANCH: ${{ steps.candidate.outputs.branch }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          set -euo pipefail
+          dispatched_after=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+          gh workflow run build-artifacts-manual.yml --ref "$CANDIDATE_BRANCH" \
+            -f build_metadata=haasanen.1 -f libghostty_optimize=ReleaseFast -f libghostty_simd=true
+          for attempt in {1..30}; do
+            run_id=$(gh run list --workflow build-artifacts-manual.yml --branch "$CANDIDATE_BRANCH" --event workflow_dispatch --limit 20 --json databaseId,headSha,createdAt |
+              jq -r --arg sha "$CANDIDATE_COMMIT" --arg since "$dispatched_after" '[.[] | select(.headSha == $sha and .createdAt >= $since) | .databaseId] | first // empty')
+            if [[ -n "$run_id" ]]; then break; fi
+            sleep 10
+          done
+          if [[ -z "$run_id" ]]; then echo 'Fork release run did not appear' >&2; exit 1; fi
+          gh run watch "$run_id" --interval 30 --exit-status
+
+      - name: Promote the tested and published merge
+        if: steps.upstream.outputs.needed == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.candidate.outputs.release_tag }}
+          CANDIDATE_COMMIT: ${{ steps.candidate.outputs.commit }}
+        run: |
+          set -euo pipefail
+          git fetch origin "refs/heads/master:refs/remotes/origin/master"
+          if ! git merge-base --is-ancestor origin/master HEAD; then
+            echo 'The default branch advanced during validation. Restart the sync; no force push will be attempted.' >&2
+            exit 1
+          fi
+          git fetch --no-tags origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          if [[ "$(git rev-list -n 1 "$RELEASE_TAG")" != "$CANDIDATE_COMMIT" ]]; then
+            echo 'Release tag no longer matches the tested candidate' >&2
+            exit 1
+          fi
+          git push origin HEAD:refs/heads/master
+          echo "Promoted $RELEASE_TAG at $CANDIDATE_COMMIT" >> "$GITHUB_STEP_SUMMARY"
