@@ -13,6 +13,8 @@ env:
 
 jobs:
   close:
+    # Upstream issue numbers in merged commits are not issues in this fork.
+    if: github.repository == 'herdrdev/herdr'
     runs-on: ubuntu-latest
 
     steps:

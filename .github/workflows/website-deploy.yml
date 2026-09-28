@@ -20,6 +20,8 @@ concurrency:
 
 jobs:
   trigger:
+    # The private website hook is owned by the canonical repository.
+    if: github.repository == 'herdrdev/herdr'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
