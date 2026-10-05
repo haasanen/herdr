@@ -212,7 +212,14 @@ impl EndpointSupervisors {
                 state.next_attempt = None;
                 state.resume_auth_retries = false;
             }
-            ClientEndpointStatus::Attention | ClientEndpointStatus::Disabled => {
+            ClientEndpointStatus::Attention => {
+                state.online_since = None;
+                // Authentication or configuration may be repaired outside this client.
+                state.next_attempt =
+                    (!endpoint_id.is_local()).then_some(now + Duration::from_secs(30));
+                state.resume_auth_retries = false;
+            }
+            ClientEndpointStatus::Disabled => {
                 state.online_since = None;
                 state.next_attempt = None;
                 state.resume_auth_retries = false;
@@ -310,6 +317,7 @@ fn connect_once(
         options.endpoint_keybindings,
         options.mouse_capture,
         false,
+        matches!(target, ConnectTarget::Local(_)),
     )
     .map_err(handshake_error)?;
     if handshake.encoding != RenderEncoding::SemanticFrame {
@@ -362,7 +370,7 @@ fn connection_failure_event(
     };
     let message = match (status, target) {
         (ClientEndpointStatus::Attention, ConnectTarget::Ssh(profile)) => format!(
-            "{error}. Run `{}` interactively to approve setup, then restart this client",
+            "{error}. Run `{}` interactively to approve setup; Herdr will retry automatically",
             crate::remote::saved_ssh_bootstrap_command(&profile.target, &profile.session)
         ),
         _ => error.to_string(),
@@ -595,7 +603,7 @@ mod tests {
     }
 
     #[test]
-    fn ssh_recovery_rejects_stale_generations_and_stops_retries_for_attention() {
+    fn ssh_recovery_rejects_stale_generations_and_rechecks_attention() {
         let now = Instant::now();
         let mut supervisors = EndpointSupervisors::new(&[profile()], now);
         let endpoint_id = ClientEndpointId::Ssh(profile().id);
@@ -614,7 +622,10 @@ mod tests {
         );
         assert!(supervisors.endpoints[&endpoint_id].resume_auth_retries);
         assert!(supervisors.record_status(&endpoint_id, 4, ClientEndpointStatus::Attention, now));
-        assert!(supervisors.endpoints[&endpoint_id].next_attempt.is_none());
+        assert_eq!(
+            supervisors.endpoints[&endpoint_id].next_attempt,
+            Some(now + Duration::from_secs(30))
+        );
         assert!(!supervisors.endpoints[&endpoint_id].resume_auth_retries);
     }
 }
