@@ -135,6 +135,17 @@ herdr notification show <title> [--body TEXT] [--position top-left|top-right|bot
 
 `notification show` 使用配置的 `[ui.toast]` 投递方式。`--position` 只影响 Herdr 应用内的 toast。`--sound` 默认为 `none`;`done` 和 `request` 只在通知实际显示时播放已有的完成音和需要关注音。
 
+## 在浏览器中打开链接
+
+```sh
+herdr browser open https://example.test/
+herdr --machine workbox browser open https://example.test/
+```
+
+请求会排队发送给一个已连接且支持此功能的客户端，由该客户端在自己的桌面上打开 URL。仅支持 HTTP 和 HTTPS URL。如果没有兼容的客户端连接，命令会失败。命令成功表示请求已发送给客户端，并不表示浏览器已完成页面加载。
+
+新窗格默认设置调用此命令的 `BROWSER`，但会保留已有的非空自定义 `BROWSER`。遵循 `BROWSER` 设置的应用程序因此可以在已连接的桌面上打开远程会话中的链接。现有 Shell 和应用程序会保留原来的环境；请新建窗格，或在空闲 Shell 中 export `BROWSER='herdr browser open %s'` 后重启应用程序。客户端和服务器都需要支持浏览器转发的版本。
+
 ## 会话
 
 ```bash
@@ -490,6 +501,8 @@ herdr plugin pane close <pane_id>
 此表描述读取时的含义。仅对 `pane wait-output` 而言,`recent` 和 `recent-unwrapped` 都搜索 recent 的未折行快照,默认写法仍是 `recent`。
 
 ## 环境变量
+
+新窗格的 `BROWSER` 默认使用 Herdr 的客户端浏览器启动器，将 URL 转发给已连接的客户端。已有的自定义设置会保留。
 
 | 变量 | 用途 |
 | --- | --- |
