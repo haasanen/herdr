@@ -179,6 +179,10 @@ jobs:
         if: runner.os == 'Linux'
         run: CARGO_INCREMENTAL=1 just ci-tests '${{ matrix.nextest_filter }}'
 
+      - name: Verify the Linux browser launcher calls Herdr
+        if: runner.os == 'Linux'
+        run: cargo test --manifest-path tests/fixtures/browser-launcher/Cargo.toml --locked
+
       - name: Run macOS checks
         if: runner.os == 'macOS'
         run: CARGO_INCREMENTAL=1 just ci '${{ matrix.nextest_filter }}'
