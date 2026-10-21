@@ -246,8 +246,66 @@ jobs:
             BUILD_INFO.txt
           retention-days: 7
 
+  release-smoke:
+    needs: [build-linux]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Fetch upstream documentation release tags
+        if: github.repository != 'herdrdev/herdr'
+        run: git fetch --no-tags https://github.com/herdrdev/herdr.git 'refs/tags/v*:refs/tags/v*'
+
+      - name: Verify documentation contracts
+        run: |
+          python3 scripts/agent_detection_manifest_check.py --require-published
+          python3 scripts/config_reference_check.py
+          python3 scripts/docs_translation_parity.py --docs-root docs/next/website/src/content/docs
+          node scripts/docs/versions.mjs check
+          node scripts/docs/preview.mjs check
+
+      - name: Download Linux candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: herdr-linux-x86_64-${{ inputs.libghostty_optimize }}-simd-${{ inputs.libghostty_simd }}
+          path: candidate
+
+      - name: Install performance check tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq lsof perl tmux sysstat
+
+      - name: Fetch and verify the current fork release
+        shell: bash
+        run: |
+          curl -fsSL "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/latest.json" -o stable-manifest.json
+          asset_url=$(jq -er '.assets["linux-x86_64"].url' stable-manifest.json)
+          checksum=$(jq -er '.assets["linux-x86_64"].sha256' stable-manifest.json)
+          curl -fsSL "$asset_url" -o herdr-stable
+          printf '%s  herdr-stable\n' "$checksum" | sha256sum -c -
+          chmod +x herdr-stable candidate/herdr-linux-x86_64
+
+      - name: Compare visible and hidden output performance
+        shell: bash
+        run: |
+          HERDR_PERF_BASELINE_BIN="$GITHUB_WORKSPACE/herdr-stable" \
+            scripts/release_perf_smoke.sh candidate/herdr-linux-x86_64 | tee release-perf-smoke.txt
+
+      - name: Upload performance results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: herdr-release-performance
+          path: release-perf-smoke.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
   release:
-    needs: [build-linux, build-macos, build-windows]
+    needs: [build-linux, build-macos, build-windows, release-smoke]
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -257,6 +315,30 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
+
+      - name: Require successful CI for the release commit
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        with:
+          script: |
+            for (let attempt = 0; attempt < 90; attempt++) {
+              const { data } = await github.rest.actions.listWorkflowRuns({
+                ...context.repo,
+                workflow_id: 'ci.yml',
+                head_sha: context.sha,
+                per_page: 30,
+              });
+              const runs = data.workflow_runs.filter(run => run.head_sha === context.sha);
+              if (runs.some(run => run.conclusion === 'success')) {
+                core.info(`Source CI passed for ${context.sha}`);
+                return;
+              }
+              if (runs.length && runs.every(run => run.status === 'completed')) {
+                core.setFailed(`Source CI failed for ${context.sha}; refusing publication`);
+                return;
+              }
+              await new Promise(resolve => setTimeout(resolve, 10000));
+            }
+            core.setFailed(`Timed out waiting for source CI for ${context.sha}`);
 
       - name: Determine release version
         id: version
