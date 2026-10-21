@@ -37,6 +37,7 @@ pub(super) fn command() -> Command {
         .subcommand(machine::command())
         .subcommand(server_command())
         .subcommand(api_command())
+        .subcommand(browser_command())
         .subcommand(workspace_command())
         .subcommand(worktree_command())
         .subcommand(tab_command())
@@ -186,6 +187,16 @@ fn api_command() -> Command {
                 .about("Print or write the bundled API schema")
                 .arg(json_flag())
                 .arg(path_option("output", "PATH")),
+        )
+}
+
+fn browser_command() -> Command {
+    Command::new("browser")
+        .about("Open web URLs on an attached client's desktop")
+        .subcommand(
+            Command::new("open")
+                .about("Send a web URL to an attached browser-capable client")
+                .arg(Arg::new("url").value_name("URL").required(true)),
         )
 }
 

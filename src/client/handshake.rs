@@ -197,6 +197,7 @@ pub(super) fn do_handshake(
             ),
             endpoint_keybindings,
             mouse_capture,
+            browser_open: crate::platform::supports_browser_open(),
             surface_active,
             surface_reuse: true,
             surface_delta: true,

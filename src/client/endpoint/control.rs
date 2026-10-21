@@ -7,6 +7,7 @@ pub(crate) struct DecodedAgentViewProjection {
 }
 
 pub(crate) enum EndpointControlMessage {
+    BrowserOpen(crate::api::schema::BrowserOpenParams),
     HealthPong,
     AgentViewProjection(DecodedAgentViewProjection),
     AgentCompletions(crate::protocol::endpoint::EndpointAgentCompletions),
@@ -18,6 +19,15 @@ pub(crate) fn decode_endpoint_control(
     kind: &str,
     data: &str,
 ) -> Result<EndpointControlMessage, String> {
+    if kind == crate::protocol::endpoint::BROWSER_OPEN_KIND {
+        return Ok(
+            serde_json::from_str::<crate::api::schema::BrowserOpenParams>(data)
+                .ok()
+                .filter(|request| crate::browser::validate_url(&request.url).is_ok())
+                .map(EndpointControlMessage::BrowserOpen)
+                .unwrap_or(EndpointControlMessage::Ignored),
+        );
+    }
     if kind == crate::protocol::endpoint::HEALTH_PONG_KIND {
         return Ok(EndpointControlMessage::HealthPong);
     }
@@ -74,6 +84,25 @@ pub(crate) fn protocol_failure_is_fatal(endpoint_id: &ClientEndpointId) -> bool 
 mod tests {
     use super::*;
     use crate::client::endpoint::ProfileId;
+
+    #[test]
+    fn browser_controls_validate_urls_without_breaking_the_endpoint() {
+        let kind = crate::protocol::endpoint::BROWSER_OPEN_KIND;
+        assert!(matches!(
+            decode_endpoint_control(kind, r#"{"url":"https://example.test/a?b=c&d=e"}"#).unwrap(),
+            EndpointControlMessage::BrowserOpen(_)
+        ));
+        for data in [
+            "invalid",
+            r#"{"url":"file:///tmp/a"}"#,
+            r#"{"url":"javascript:alert(1)"}"#,
+        ] {
+            assert!(matches!(
+                decode_endpoint_control(kind, data).unwrap(),
+                EndpointControlMessage::Ignored
+            ));
+        }
+    }
 
     #[test]
     fn unknown_optional_controls_are_ignored() {

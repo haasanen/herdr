@@ -109,6 +109,12 @@ For Git authentication or SSH signing inside remote panes, enable `ForwardAgent 
 
 This requires an updated remote server, not just an updated local client. Local sessions started without an agent leave `SSH_AUTH_SOCK` alone. Panes created before the server update, or before an agent was first supplied to the session, keep their original environment and need to be recreated once to inherit the stable address. Older compatible servers and connections without agent forwarding can still attach normally.
 
+## Opening links on your desktop
+
+Applications in new panes can use `BROWSER` to open HTTP/HTTPS links on an attached client's desktop, including when the pane runs on a headless SSH machine. Herdr supplies this launcher unless a custom `BROWSER` is already set. Update both the client and remote server for this feature, then start a new pane or restart the application with `BROWSER='herdr browser open %s'` exported in its shell. Existing processes keep their original environment across reconnections and live updates.
+
+To request a browser directly, run `herdr browser open https://example.test/` inside the remote pane. Herdr sends each request to one capable attached client. The command fails if none is available. Control-clicking links continues to use the client-side URL handler independently.
+
 ## Settings and automation
 
 The UI uses the client's local theme, sidebar settings, and keybindings by default. Custom commands and plugins advertised by the selected server still run there. Herdr does not copy local command plugins, configuration, executables, or secrets onto SSH hosts. Missing remote commands fail visibly. Use the UI's `reload config` action after editing client settings; see [Configuration](/docs/configuration/#reload-config).

@@ -2405,6 +2405,10 @@ pub fn read_clipboard_text() -> Option<String> {
     None
 }
 
+pub fn supports_browser_open() -> bool {
+    true
+}
+
 pub fn open_url(url: &str) -> std::io::Result<Option<std::process::Child>> {
     let operation = wide_null("open");
     let url = wide_null(url);

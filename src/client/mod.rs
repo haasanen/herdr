@@ -2015,6 +2015,16 @@ async fn run_client_loop(
                             continue;
                         }
                         let snapshot = match endpoint::decode_endpoint_control(&kind, &data) {
+                            Ok(endpoint::EndpointControlMessage::BrowserOpen(request)) => {
+                                match crate::platform::open_url(&request.url) {
+                                    Ok(Some(child)) => state.detached_process_children.push(child),
+                                    Ok(None) => {}
+                                    Err(error) => {
+                                        warn!(%error, "failed to open requested browser URL")
+                                    }
+                                }
+                                continue;
+                            }
                             Ok(endpoint::EndpointControlMessage::HealthPong) => continue,
                             Ok(endpoint::EndpointControlMessage::AgentViewProjection(
                                 projection,

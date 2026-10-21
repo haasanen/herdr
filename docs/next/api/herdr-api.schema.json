@@ -1695,6 +1695,17 @@
           ],
           "type": "object"
         },
+        "BrowserOpenParams": {
+          "properties": {
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "url"
+          ],
+          "type": "object"
+        },
         "ClientShellSurfaceSetParams": {
           "description": "Updates whether the requesting client shell receives and controls pane presentation.",
           "properties": {
@@ -4881,6 +4892,22 @@
             },
             "params": {
               "$ref": "#/schemas/request/$defs/EmptyParams"
+            }
+          },
+          "required": [
+            "method",
+            "params"
+          ],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "method": {
+              "const": "browser.open",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/schemas/request/$defs/BrowserOpenParams"
             }
           },
           "required": [
@@ -9167,6 +9194,22 @@
         },
         "ResponseResult": {
           "oneOf": [
+            {
+              "properties": {
+                "queued": {
+                  "type": "boolean"
+                },
+                "type": {
+                  "const": "browser_open",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "queued"
+              ],
+              "type": "object"
+            },
             {
               "properties": {
                 "capabilities": {

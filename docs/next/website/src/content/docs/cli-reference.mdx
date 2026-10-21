@@ -139,6 +139,17 @@ herdr notification show <title> [--body TEXT] [--position top-left|top-right|bot
 
 `notification show` uses the configured `[ui.toast]` delivery. `--position` only affects in-app Herdr toasts. `--sound` defaults to `none`; `done` and `request` play the existing finished and needs-attention sounds only when the notification is shown.
 
+## Browser links
+
+```sh
+herdr browser open https://example.test/
+herdr --machine workbox browser open https://example.test/
+```
+
+The request is queued to one attached browser-capable client, which opens the URL on its own desktop. Only HTTP and HTTPS URLs are accepted. The command fails if no compatible client is connected. A successful command confirms delivery to the client, not that the browser finished loading the page.
+
+New panes receive a `BROWSER` launcher for this command unless they already have a nonempty custom `BROWSER`. Applications that honor `BROWSER` can therefore open remote-session links on the attached desktop. Existing shells and applications retain their old environment; start a new pane or set `BROWSER='herdr browser open %s'` in an idle shell and restart the application. Both client and server must include browser-forwarding support.
+
 ## Sessions
 
 ```bash
@@ -560,6 +571,7 @@ These meanings apply to reads. For `pane wait-output` only, both `recent` and `r
 | Variable | Purpose |
 | --- | --- |
 | `HERDR_CONFIG_PATH` | Override the config file path. |
+| `BROWSER` | New panes default to Herdr's attached-client browser launcher; custom values are preserved. |
 | `HERDR_SESSION` | Select a named session for CLI commands. |
 | `HERDR_SOCKET_PATH` | Low-level socket path override. |
 | `HERDR_PROCESS_DETECTION` | Linux process detection strategy: `native` (default) or opt-in `child-groups`. |

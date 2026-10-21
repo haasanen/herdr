@@ -73,6 +73,7 @@ use crate::server::socket_paths::{
 use crate::server::terminal_attach::paste_payload_for_runtime;
 
 mod bootstrap;
+mod browser;
 mod client_views;
 mod endpoint_requests;
 mod lifecycle;
@@ -1862,6 +1863,7 @@ impl HeadlessServer {
                 surface_reuse,
                 surface_delta,
                 surface_scroll,
+                browser_open,
                 writer,
             } => {
                 if self.handoff_in_progress {
@@ -1906,6 +1908,7 @@ impl HeadlessServer {
                 connection.direct_graphics = direct_graphics;
                 connection.shell_uses_endpoint_keybindings = endpoint_keybindings;
                 connection.shell_mouse_capture = mouse_capture;
+                connection.browser_open = browser_open;
                 connection.shell_surface_active = surface_active;
                 connection.render_state.enable_surface_reuse(surface_reuse);
                 connection.render_state.enable_surface_delta(surface_delta);
@@ -2887,6 +2890,11 @@ impl HeadlessServer {
         }
 
         match &msg.request.method {
+            api::schema::Method::BrowserOpen(params) => {
+                let response = self.handle_browser_open_api(&msg.request.id, params);
+                let _ = msg.respond_to.send(response);
+                return false;
+            }
             api::schema::Method::ClientWindowTitleSet(params) => {
                 let response = self.handle_client_window_title_api(
                     msg.request.id.clone(),

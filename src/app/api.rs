@@ -1015,6 +1015,13 @@ impl App {
             Method::CommandInvoke(params) => {
                 return self.handle_command_invoke(request.id, params);
             }
+            Method::BrowserOpen(_) => {
+                return responses::encode_error(
+                    request.id,
+                    "no_browser_client",
+                    "no attached browser-capable client is available",
+                );
+            }
             Method::ClientWindowTitleSet(_) | Method::ClientWindowTitleClear(_) => {
                 return responses::encode_success(
                     request.id,

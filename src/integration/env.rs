@@ -28,6 +28,14 @@ pub(crate) const HERMES_HOME_ENV_VAR: &str = "HERMES_HOME";
 pub(crate) fn apply_pane_base_env(cmd: &mut CommandBuilder) {
     cmd.env(crate::api::SOCKET_PATH_ENV_VAR, crate::api::socket_path());
     if let Ok(executable) = crate::platform::launch_executable() {
+        if cmd.get_env("BROWSER").is_none_or(|value| value.is_empty()) {
+            if let Some((browser, path)) =
+                crate::browser::pane_browser_env(&executable, cmd.get_env("PATH"))
+            {
+                cmd.env("BROWSER", browser);
+                cmd.env("PATH", path);
+            }
+        }
         cmd.env("HERDR_BIN_PATH", executable);
     }
 }
@@ -264,6 +272,37 @@ pub(crate) fn integration_env_lock() -> IntegrationEnvLock {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn browser_bridge_preserves_an_explicit_launcher_and_path() {
+        let mut command = CommandBuilder::new("test");
+        command.env("BROWSER", "custom-browser --new-window");
+        command.env("PATH", "existing-path");
+        apply_pane_base_env(&mut command);
+        assert_eq!(
+            command.get_env("BROWSER"),
+            Some(std::ffi::OsStr::new("custom-browser --new-window"))
+        );
+        assert_eq!(
+            command.get_env("PATH"),
+            Some(std::ffi::OsStr::new("existing-path"))
+        );
+    }
+
+    #[test]
+    fn browser_bridge_supplies_a_launcher_to_new_panes() {
+        for browser in [None, Some("")] {
+            let mut command = CommandBuilder::new("test");
+            command.env_remove("BROWSER");
+            if let Some(browser) = browser {
+                command.env("BROWSER", browser);
+            }
+            apply_pane_base_env(&mut command);
+            let browser = command.get_env("BROWSER").unwrap().to_str().unwrap();
+            assert!(browser.ends_with(" browser open %s"));
+            assert!(!browser.starts_with('\''));
+        }
+    }
 
     #[test]
     fn opencode_state_dir_defaults_to_local_state() {

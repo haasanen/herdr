@@ -1,0 +1,14 @@
+[package]
+name = "herdr-browser-launcher-check"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+webbrowser = "=1.0.6"
+
+[[test]]
+name = "browser_launcher"
+path = "browser_launcher.rs"

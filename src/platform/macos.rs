@@ -672,6 +672,10 @@ pub fn read_clipboard_text() -> Option<String> {
     }
 }
 
+pub fn supports_browser_open() -> bool {
+    true
+}
+
 pub fn open_url(url: &str) -> std::io::Result<Option<std::process::Child>> {
     Command::new("open")
         .arg(url)

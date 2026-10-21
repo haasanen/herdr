@@ -31,6 +31,7 @@ pub const AGENT_VIEW_PROJECTION_CAPABILITY: &str = "agent_view_projection";
 pub const AGENT_VIEW_PROJECTION_KIND: &str = "endpoint.agent-view.v1";
 pub const AGENT_COMPLETIONS_CAPABILITY: &str = "agent_completions";
 pub const AGENT_COMPLETIONS_KIND: &str = "endpoint.agent-completions.v1";
+pub const BROWSER_OPEN_KIND: &str = "endpoint.browser-open.v1";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EndpointAgentCompletions {
@@ -53,6 +54,9 @@ pub struct EndpointClientHello {
     pub direct_graphics: bool,
     pub endpoint_keybindings: bool,
     pub mouse_capture: bool,
+    /// Accept optional requests to open web URLs on this client's desktop.
+    #[serde(default)]
+    pub browser_open: bool,
     #[serde(default = "default_true")]
     pub surface_active: bool,
     /// Accept the optional cell-retaining surface encoding on this connection.
@@ -201,6 +205,15 @@ impl EndpointServerWelcome {
 mod tests {
     use super::*;
 
+    #[test]
+    fn old_endpoint_hello_keeps_browser_forwarding_disabled() {
+        let mut value = serde_json::to_value(hello()).unwrap();
+        value.as_object_mut().unwrap().remove("browser_open");
+        let decoded: EndpointClientHello = serde_json::from_value(value).unwrap();
+        assert!(!decoded.browser_open);
+        assert!(decoded.supports_required_codecs());
+    }
+
     fn hello() -> EndpointClientHello {
         EndpointClientHello {
             generation: ENDPOINT_PROTOCOL_GENERATION,
@@ -215,6 +228,7 @@ mod tests {
             surface_reuse: false,
             surface_delta: false,
             surface_scroll: false,
+            browser_open: false,
             snapshot_codecs: vec![SNAPSHOT_CODEC_V1.into()],
             surface_codecs: vec![SURFACE_CODEC_V1.into()],
             input_codecs: vec![INPUT_CODEC_V1.into()],
