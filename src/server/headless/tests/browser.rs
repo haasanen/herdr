@@ -90,6 +90,14 @@ fn browser_request_rejects_unsafe_urls_and_missing_browser_clients() {
 fn browser_request_does_not_report_delivery_to_a_closed_writer() {
     let mut server = test_headless_server();
     let control = add_browser_client(&mut server, 1, true, true);
+    server
+        .clients
+        .get(&1)
+        .unwrap()
+        .writer
+        .as_ref()
+        .unwrap()
+        .test_close();
     drop(control);
     assert_eq!(
         browser_request(&mut server, "https://example.test")["error"]["code"],
