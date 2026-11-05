@@ -1,4 +1,4 @@
----
+pre---
 title: CLI リファレンス
 description: セッション、ワークスペース、タブ、ペイン、通知、エージェント、wait、インテグレーション、ステータスのための Herdr コマンド。
 ---
@@ -134,6 +134,18 @@ herdr notification show <title> [--body TEXT] [--position top-left|top-right|bot
 ```
 
 `notification show` は設定済みの `[ui.toast]` 配信を使います。`--position` はアプリ内の Herdr トーストにのみ影響します。`--sound` のデフォルトは `none` で、`done` と `request` は通知が表示されたときにのみ、既存の完了音と要注意音を再生します。
+
+
+## ブラウザーでリンクを開く
+```sh
+herdr browser open https://example.test/
+herdr --machine workbox browser open https://example.test/
+```
+
+リクエストは接続中の対応クライアント 1 つに送信され、そのクライアントのデスクトップで URL を開きます。HTTP と HTTPS の URL のみを受け付けます。対応クライアントが接続されていない場合、コマンドは失敗します。成功はクライアントへの送信を示し、ブラウザーでページの読み込みが完了したことは示しません。
+
+新しいペインには、このコマンドを実行する `BROWSER` が設定されます。空でない独自の `BROWSER` がある場合は保持されます。`BROWSER` に対応するアプリケーションは、リモートセッションのリンクを接続先のデスクトップで開けます。既存のシェルやアプリケーションは元の環境を保持するため、新しいペインを作成するか、待機中のシェルで `BROWSER='herdr browser open %s'` を export してアプリケーションを再起動してください。クライアントとサーバーの両方にブラウザー転送の対応版が必要です。
+
 
 ## セッション
 
