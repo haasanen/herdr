@@ -2088,6 +2088,26 @@ impl ClientShellState {
                     outcome.repaint = true;
                     return;
                 }
+                let workspace_menu = self
+                    .hits
+                    .workspaces
+                    .iter()
+                    .find(|hit| {
+                        hit.endpoint_id == self.active_endpoint_id
+                            && super::contains(hit.menu_button, point)
+                    })
+                    .map(|hit| {
+                        (
+                            hit.workspace_id.clone(),
+                            hit.menu_button.x,
+                            hit.menu_button.y,
+                        )
+                    });
+                if let Some((workspace_id, x, y)) = workspace_menu {
+                    self.open_workspace_context_menu(workspace_id, x, y);
+                    outcome.repaint = true;
+                    return;
+                }
                 let group_toggle = self.hits.workspaces.iter().find_map(|hit| {
                     let (rect, key) = hit.group_toggle.as_ref()?;
                     super::contains(*rect, point).then(|| (hit.endpoint_id.clone(), key.clone()))
@@ -2111,6 +2131,22 @@ impl ClientShellState {
                     });
                 if let Some(workspace_press) = workspace_press {
                     self.workspace_press = Some(workspace_press);
+                    return;
+                }
+                let tab_menu = self
+                    .config
+                    .mouse_capture
+                    .then(|| {
+                        self.hits
+                            .tab_menu_buttons
+                            .iter()
+                            .find(|(rect, _)| super::contains(*rect, point))
+                            .map(|(rect, tab_id)| (*rect, tab_id.clone()))
+                    })
+                    .flatten();
+                if let Some((rect, tab_id)) = tab_menu {
+                    self.open_tab_context_menu(tab_id, rect.x, rect.y);
+                    outcome.repaint = true;
                     return;
                 }
                 let tab_press = self

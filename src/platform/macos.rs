@@ -1201,6 +1201,9 @@ pub fn process_exists(pid: u32) -> bool {
     }
 }
 
+pub fn supports_browser_open() -> bool {
+    true
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1421,8 +1424,4 @@ printf '%s\n' "$@" > "$HERDR_NOTIFY_ARGS"
         assert!(argv[2].contains("EDITOR:-vi"));
         assert!(argv[2].contains("/tmp/herdr scrollback.txt"));
     }
-}
-
-pub fn supports_browser_open() -> bool {
-    true
 }

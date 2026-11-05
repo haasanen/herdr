@@ -1234,6 +1234,11 @@ fn process_session_id(pid: u32) -> Option<i32> {
     fields.get(3)?.parse().ok()
 }
 
+pub fn supports_browser_open() -> bool {
+    ["DISPLAY", "WAYLAND_DISPLAY"]
+        .iter()
+        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2271,10 +2276,4 @@ mod tests {
         assert!(argv[2].contains("EDITOR:-vi"));
         assert!(argv[2].contains("/tmp/herdr scrollback.txt"));
     }
-}
-
-pub fn supports_browser_open() -> bool {
-    ["DISPLAY", "WAYLAND_DISPLAY"]
-        .iter()
-        .any(|name| std::env::var_os(name).is_some_and(|value| !value.is_empty()))
 }

@@ -3329,6 +3329,9 @@ impl Drop for InputSourceRestore {
     }
 }
 
+pub fn supports_browser_open() -> bool {
+    true
+}
 #[cfg(test)]
 mod tests {
     use std::{
@@ -5455,8 +5458,4 @@ mod tests {
             );
         }
     }
-}
-
-pub fn supports_browser_open() -> bool {
-    true
 }
